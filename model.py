@@ -2,14 +2,17 @@ import csv
 import cv2
 import numpy as np
 from keras.models import Sequential
-from keras.layers import Dense, Flatten, Lambda, Cropping2D, Convolution2D
+from keras.layers import Dense, Flatten, Lambda, Cropping2D, Convolution2D, MaxPooling2D
+from keras import regularizers
+from keras.regularizers import l2
+from keras.layers.normalization import BatchNormalization
 from sklearn.model_selection import train_test_split
 from sklearn.utils import shuffle
 import sklearn
 import matplotlib.pyplot as plt
 
 samples = []
-with open('full_driving_log.csv') as csvfile:
+with open('driving_log.csv') as csvfile:
     reader = csv.reader(csvfile)
     for line in reader:
         samples.append(line)
@@ -34,12 +37,14 @@ def generator(samples, batch_size=64):
                     source_path = sample[i]
                     filename = source_path.split('\\')[-1]
                     filename = filename.replace(' ', "")
-                    if filename[0] == 'I':
-                        current_path = 'full_' + filename
-                    else:
-                        current_path = 'full_IMG/' + filename
+                    if filename[0] != 'I':
+                        filename = 'IMG/' + filename
+                    # if filename[0] == 'I':
+                    #     current_path = 'full_' + filename
+                    # else:
+                    #     current_path = 'full_IMG/' + filename
                     # current_path = 'IMG/' + filename
-                    # current_path = filename
+                    current_path = filename
                     image = cv2.imread(current_path)
                     if type(image) is None: continue
                     images.append(image)
@@ -61,7 +66,7 @@ def generator(samples, batch_size=64):
             X_train = np.array(augmented_images)
             y_train = np.array(augmented_measurments)
             if type(X_train) is None: continue
-            X_train = np.dot(X_train[...,:3],gray)
+            X_train = np.dot(X_train[...,:3], gray)
             X_train = np.reshape(X_train, X_train.shape + (1,))
             if X_train[0].shape != (160, 320, 1): continue
             yield sklearn.utils.shuffle(X_train, y_train)
@@ -69,24 +74,47 @@ def generator(samples, batch_size=64):
 train_generator = generator(train_samples, batch_size=64)
 validation_generator = generator(validation_samples, batch_size=64)
 
-model = Sequential()
-model.add(Lambda(lambda x: x / 127.5 - 1, input_shape=(160, 320, 1)))
-model.add(Cropping2D(cropping=((70, 25), (0, 0))))
-model.add(Convolution2D(3, 5, 5, activation='relu'))
-model.add(Convolution2D(24, 5, 5, activation='relu'))
-model.add(Convolution2D(36, 5, 5, activation='relu'))
-model.add(Convolution2D(48, 3, 3, activation='relu'))
-model.add(Convolution2D(64, 3, 3, activation='relu'))
-model.add(Flatten())
-model.add(Dense(100))
-model.add(Dense(50))
-model.add(Dense(10))
-model.add(Dense(1))
-model.compile(loss='mse', optimizer='adam')
-# model.fit(X_train, y_train, validation_split=0.2, shuffle=True)
+# model = Sequential()
+# model.add(Lambda(lambda x: x / 127.5 - 1, input_shape=(160, 320, 1)))
+# model.add(Cropping2D(cropping=((70, 25), (0, 0))))
+# model.add(Convolution2D(3, 5, 5, activation='relu'))
+# model.add(Convolution2D(24, 5, 5, activation='relu'))
+# model.add(Convolution2D(36, 5, 5, activation='relu'))
+# model.add(Convolution2D(48, 3, 3, activation='relu'))
+# model.add(Convolution2D(64, 3, 3, activation='relu'))
+# model.add(Flatten())
+# model.add(Dense(100))
+# model.add(Dense(50))
+# model.add(Dense(10))
+# model.add(Dense(1))
+# model.compile(loss='mse', optimizer='adam')
 
-history_object = model.fit_generator(train_generator, samples_per_epoch = len(train_samples), validation_data = validation_generator, nb_val_samples = len(validation_samples),
-	nb_epoch=10, verbose=1)
+# # model.fit(X_train, y_train, validation_split=0.2, shuffle=True)
+
+models = Sequential()
+models.add(Cropping2D(cropping=((50,20), (1,1)), input_shape=(160, 320, 1)))
+models.add(Lambda(lambda x: x/255.0 - 0.5))
+models.add(Convolution2D(24,5,5, subsample=(2,2), activation='relu', W_regularizer = l2(0.001)))
+models.add(BatchNormalization())
+models.add(Convolution2D(36,5,5, subsample=(2,2), activation='relu', W_regularizer = l2(0.001)))
+models.add(BatchNormalization())
+models.add(Convolution2D(48,5,5, subsample=(2,2), activation='relu', W_regularizer = l2(0.001)))
+models.add(BatchNormalization())
+models.add(Convolution2D(64,3,3,activation='relu', W_regularizer = l2(0.001)))
+models.add(BatchNormalization())
+# models.add(MaxPooling2D()) #
+models.add(Flatten())
+models.add(Dense(100, W_regularizer = l2(0.001)))
+# models.add(BatchNormalization()) #
+models.add(Dense(50, W_regularizer = l2(0.001)))
+# models.add(BatchNormalization()) #
+models.add(Dense(10, W_regularizer = l2(0.001)))
+# models.add(BatchNormalization()) #
+models.add(Dense(1, W_regularizer = l2(0.001)))
+models.compile(optimizer='adam', loss='mse', metrics=['accuracy'])
+
+history_object = models.fit_generator(train_generator, samples_per_epoch = len(train_samples), validation_data = validation_generator, nb_val_samples = len(validation_samples),
+	nb_epoch=5, verbose=1)
 
 ### print the keys contained in the history object
 print(history_object.history.keys())
@@ -100,4 +128,4 @@ print(history_object.history.keys())
 # plt.legend(['training set', 'validation set'], loc='upper right')
 # plt.show()
 
-model.save('model.h5')
+models.save('model.h5')
