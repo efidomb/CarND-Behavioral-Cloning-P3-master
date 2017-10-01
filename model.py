@@ -22,7 +22,7 @@ train_samples, validation_samples = train_test_split(samples, test_size=0.2)
 correction = 0.2
 gray = [0.299, 0.587, 0.114]
 
-def generator(samples, batch_size=64):
+def generator(samples, batch_size=64, augment=True):
     num_samples = len(samples)
     print ('generator num_samples:', num_samples)
     while 1: # Loop forever so the generator never terminates
@@ -60,8 +60,9 @@ def generator(samples, batch_size=64):
             for image, measurment in zip(images, measurments):
                 augmented_images.append(image)
                 augmented_measurments.append(measurment)
-                augmented_images.append(cv2.flip(image, 1))
-                augmented_measurments.append(measurment * -1.0)
+                if augment:
+                    augmented_images.append(cv2.flip(image, 1))
+                    augmented_measurments.append(measurment * -1.0)
 
             X_train = np.array(augmented_images)
             y_train = np.array(augmented_measurments)
@@ -72,7 +73,7 @@ def generator(samples, batch_size=64):
             yield sklearn.utils.shuffle(X_train, y_train)
 
 train_generator = generator(train_samples, batch_size=64)
-validation_generator = generator(validation_samples, batch_size=64)
+validation_generator = generator(validation_samples, batch_size=64, augment=False)
 
 # model = Sequential()
 # model.add(Lambda(lambda x: x / 127.5 - 1, input_shape=(160, 320, 1)))
@@ -114,7 +115,7 @@ models.add(Dense(1, W_regularizer = l2(0.001)))
 models.compile(optimizer='adam', loss='mse', metrics=['accuracy'])
 
 history_object = models.fit_generator(train_generator, samples_per_epoch = len(train_samples), validation_data = validation_generator, nb_val_samples = len(validation_samples),
-	nb_epoch=5, verbose=1)
+	nb_epoch=50, verbose=1)
 
 ### print the keys contained in the history object
 print(history_object.history.keys())
